@@ -1,0 +1,6 @@
+c:\users\venkat\documents\visual studio 2015\Projects\LoanService\LoanService\bin\LoanService.dll.config
+c:\users\venkat\documents\visual studio 2015\Projects\LoanService\LoanService\bin\LoanService.dll
+c:\users\venkat\documents\visual studio 2015\Projects\LoanService\LoanService\bin\LoanService.pdb
+c:\users\venkat\documents\visual studio 2015\Projects\LoanService\LoanService\obj\Debug\LoanService.csprojResolveAssemblyReference.cache
+c:\users\venkat\documents\visual studio 2015\Projects\LoanService\LoanService\obj\Debug\LoanService.dll
+c:\users\venkat\documents\visual studio 2015\Projects\LoanService\LoanService\obj\Debug\LoanService.pdb
