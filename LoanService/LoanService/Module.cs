@@ -14,6 +14,34 @@ namespace LoanService
             applicationcontext.PreRequestHandlerExecute += new EventHandler(Applicationcontext_PreRequestHandlerExecute);
             applicationcontext.BeginRequest += new EventHandler(Applicationcontext_BeginRequest);
             applicationcontext.EndRequest += new EventHandler(Applicationcontext_EndRequest);
+            
+             HttpRequest request = ((HttpApplication)sender).Request;
+            HttpContext context = ((HttpApplication)sender).Context;
+            XDocument doc = XDocument.Load(context.Request.InputStream);
+           
+            var result = doc.Root.Attributes().
+                        Where(a => a.IsNamespaceDeclaration && a.Name.Namespace == "http://us.mufg.jp/Applications/LoansApp/OVSSubmissionStatus").Select(a => a.Name.Namespace);
+            if (result!=null)
+            {
+                string transactionID = (string)doc.Root.Attribute("TransactionId");
+            }
+            // IncomingWebRequestContext request1 = WebOperationContext.Current.IncomingRequest;
+
+            System.IO.Stream req = context.Request.InputStream;
+            req.Seek(0, System.IO.SeekOrigin.Begin);
+            string str = new System.IO.StreamReader(req).ReadToEnd();
+            if (str!=null)
+            {
+
+                //XDocument doc = XDocument.Parse(str);
+                // XNamespace ns = " http://us.mufg.jp/Applications/LoansApp/OVSSubmissionStatus";
+
+                //var result = doc.Root.Attributes().
+                //        Where(a => a.IsNamespaceDeclaration && a.Name.Namespace == "http://us.mufg.jp/Applications/LoansApp/OVSSubmissionStatus").Select(a => a.Name.Namespace);
+                       
+
+                //var id = doc.Descendants(ns+"OVSStatus").FirstOrDefault().Value;
+            }
 
         }
 
