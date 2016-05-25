@@ -13,6 +13,19 @@ var results = from result in yourXml.Descendants(XName.Get("MyResponse", myNames
        
 IEnumerable<XElement> list = doc.Document.Descendants("Result");
 if (list.Count() > 0)
-{
-    // do stuff
-}
+
+
+System.IO.Stream req = context.Request.InputStream;
+                req.Seek(0, System.IO.SeekOrigin.Begin);
+                string str = new System.IO.StreamReader(req).ReadToEnd();
+
+                if (!string.IsNullOrEmpty(str))
+                {
+                    XDocument z = XDocument.Parse(str);
+                   // XDocument z = XDocument.Parse(s);
+                    var result = z.Root.Attributes().
+                            Where(a => a.IsNamespaceDeclaration).
+                            GroupBy(a => a.Name.Namespace == XNamespace.None ? String.Empty : a.Name.LocalName,
+                                    a => XNamespace.Get(a.Value)).
+                            ToDictionary(g => g.Key,
+                                         g => g.First());
