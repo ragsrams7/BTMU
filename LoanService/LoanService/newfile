@@ -31,8 +31,8 @@ namespace LoanService
             req.Seek(0, System.IO.SeekOrigin.Begin);
             string str = new System.IO.StreamReader(req).ReadToEnd();
             req.Position = 0;
-            //XDocument z = XDocument.Load(@"C:\Users\N305733\Downloads\loan\LoanService\XMLFile1.xml");
-            //XDocument z = XDocument.Load(@"C:\Users\N305733\Downloads\loan\LoanService\XMLFile2.xml");
+            //XDocument z = XDocument.Load(@"\XMLFile1.xml");
+            //XDocument z = XDocument.Load(@"XMLFile2.xml");
             if (!string.IsNullOrEmpty(str) && context.Request.HttpMethod =="POST")
             {
                 XDocument z = XDocument.Parse(str);
@@ -44,7 +44,7 @@ namespace LoanService
                         ToDictionary(g => g.Key,
                                      g => g.First());
                
-                if (result.ContainsValue("http://us.mufg.jp/Applications/LoansApp/OVSSubmissionStatusDataRequest"))
+                if (result.ContainsValue(""))
                 {
                     string ProcessId = z.Root.Descendants().Elements().Where(n => n.Name.LocalName == "TransactionId").FirstOrDefault().Value;
                     if (string.IsNullOrEmpty(ProcessId)) return;
@@ -54,7 +54,7 @@ namespace LoanService
                         RewritetoDut(context);
                     }
                 }
-                else if (result.ContainsValue("http://us.mufg.jp/Applications/LoansApp/WorkflowSubmissionStatusDataRequest"))
+                else if (result.ContainsValue(""))
                 {
                     var firstOrDefault = z.Root.Descendants().Elements().FirstOrDefault(n => n.Name.LocalName == "ProcessInstanceId");
                     var processId = firstOrDefault?.Value;
@@ -73,7 +73,7 @@ namespace LoanService
            
             var request = context.Request;
             var headers = new NameValueCollection(context.Request.Headers);
-            //string rewrittenUrlPath = "http://localhost:39768/Dutservice.svc";
+            //string rewrittenUrlPath = "";
             //int transferCount = 1;
             //string transferCountHeader = headers["X-Rewriter-Transfer"];
             //if (!String.IsNullOrEmpty(transferCountHeader) && Int32.TryParse(transferCountHeader, out transferCount))
@@ -81,7 +81,7 @@ namespace LoanService
 
 
             //headers["X-Rewriter-Transfer"] = transferCount.ToString();
-            context.Response.RedirectLocation = "http://localhost:39768/Dutservice.svc";
+            context.Response.RedirectLocation = "";
             context.Response.Redirect(context.Response.RedirectLocation);
 
 
@@ -102,7 +102,7 @@ namespace LoanService
                 
                 con.Open();
 
-                using (SqlCommand command = new SqlCommand("SELECT CASE WHEN EXISTS (SELECT * FROM [Common.WorkflowTransaction] WHERE ProcessInstanceId = @'transactionID') THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END", con))
+                using (SqlCommand command = new SqlCommand("SELECT CASE WHEN EXISTS (SELECT * FROM [] WHERE ProcessInstanceId = @'') THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END", con))
                 {
                     if((command.ExecuteScalar() as bool?).GetValueOrDefault())
                         env = "DUT";
@@ -115,7 +115,7 @@ namespace LoanService
 
                 con.Open();
 
-                using (SqlCommand command = new SqlCommand("SELECT CASE WHEN EXISTS (SELECT * FROM [Common.WorkflowTransaction] WHERE ProcessInstanceId = @'transactionID') THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END", con))
+                using (SqlCommand command = new SqlCommand("SELECT CASE WHEN EXISTS (SELECT * FROM [] WHERE ProcessInstanceId = @'transactionID') THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END", con))
                 {
                     if((command.ExecuteScalar() as bool?).GetValueOrDefault())
                         env = "SIT";
