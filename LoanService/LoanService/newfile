@@ -1,31 +1,176 @@
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-    <soap:Body>
-        <MyResponse xmlns="http://mycrazyservice.com/SuperDuperService">
-                <Result>32347</Result>
-        </MyResponse>
-    </soap:Body>
-</soap:Envelope>
-       
-string myNamespace= "http://mycrazyservice.com/SuperDuperService";
- 
-var results = from result in yourXml.Descendants(XName.Get("MyResponse", myNamespace))
-              select result.Element("Result").value
-       
-IEnumerable<XElement> list = doc.Document.Descendants("Result");
-if (list.Count() > 0)
+using System;
+using System.IO;
+using System.Linq;
+using System.Web;
+using System.ServiceModel.Dispatcher;
+using System.Xml.Linq;
+using System.Data.SqlClient;
+using System.Collections.Specialized;
 
+namespace LoanService
+{
+    public class Module : IHttpModule, IParameterInspector
+    {
+        public void Init(HttpApplication applicationcontext)
+        {
+            applicationcontext.PreSendRequestContent += new EventHandler(Applicationcontext_PreSendRequestContent);
+            applicationcontext.PreRequestHandlerExecute += new EventHandler(Applicationcontext_PreRequestHandlerExecute);
+            applicationcontext.BeginRequest += new EventHandler(Applicationcontext_BeginRequest);
+            applicationcontext.AuthenticateRequest += Applicationcontext_AuthenticateRequest;
 
-System.IO.Stream req = context.Request.InputStream;
-                req.Seek(0, System.IO.SeekOrigin.Begin);
-                string str = new System.IO.StreamReader(req).ReadToEnd();
+        }
 
-                if (!string.IsNullOrEmpty(str))
+        private void Applicationcontext_AuthenticateRequest(object sender, EventArgs e)
+        {
+            string environment;
+            HttpRequest request = ((HttpApplication)sender).Request;
+            HttpContext context = ((HttpApplication)sender).Context;
+            
+            
+            System.IO.Stream req = context.Request.InputStream;
+            req.Seek(0, System.IO.SeekOrigin.Begin);
+            string str = new System.IO.StreamReader(req).ReadToEnd();
+            req.Position = 0;
+            //XDocument z = XDocument.Load(@"C:\Users\N305733\Downloads\loan\LoanService\XMLFile1.xml");
+            //XDocument z = XDocument.Load(@"C:\Users\N305733\Downloads\loan\LoanService\XMLFile2.xml");
+            if (!string.IsNullOrEmpty(str) && context.Request.HttpMethod =="POST")
+            {
+                XDocument z = XDocument.Parse(str);
+                
+                var result = z.Root.DescendantsAndSelf().Attributes().
+                        Where(a => a.IsNamespaceDeclaration).
+                        GroupBy(a => a.Name.Namespace == XNamespace.None ? string.Empty : a.Name.LocalName,
+                                a => XNamespace.Get(a.Value)).
+                        ToDictionary(g => g.Key,
+                                     g => g.First());
+               
+                if (result.ContainsValue("http://us.mufg.jp/Applications/LoansApp/OVSSubmissionStatusDataRequest"))
                 {
-                    XDocument z = XDocument.Parse(str);
-                   // XDocument z = XDocument.Parse(s);
-                    var result = z.Root.Attributes().
-                            Where(a => a.IsNamespaceDeclaration).
-                            GroupBy(a => a.Name.Namespace == XNamespace.None ? String.Empty : a.Name.LocalName,
-                                    a => XNamespace.Get(a.Value)).
-                            ToDictionary(g => g.Key,
-                                         g => g.First());
+                    string ProcessId = z.Root.Descendants().Elements().Where(n => n.Name.LocalName == "TransactionId").FirstOrDefault().Value;
+                    if (string.IsNullOrEmpty(ProcessId)) return;
+                    environment = CheckProcessId(ProcessId);
+                    if (environment == "DUT")
+                    {
+                        RewritetoDut(context);
+                    }
+                }
+                else if (result.ContainsValue("http://us.mufg.jp/Applications/LoansApp/WorkflowSubmissionStatusDataRequest"))
+                {
+                    var firstOrDefault = z.Root.Descendants().Elements().FirstOrDefault(n => n.Name.LocalName == "ProcessInstanceId");
+                    var processId = firstOrDefault?.Value;
+                    if (string.IsNullOrEmpty(processId)) return;
+                    environment = CheckProcessId(processId);
+                    if (environment == "DUT")
+                        RewritetoDut(context);
+                }
+            }
+           
+
+        }
+
+        private static void RewritetoDut(HttpContext context)
+        {
+           
+            var request = context.Request;
+            var headers = new NameValueCollection(context.Request.Headers);
+            //string rewrittenUrlPath = "http://localhost:39768/Dutservice.svc";
+            //int transferCount = 1;
+            //string transferCountHeader = headers["X-Rewriter-Transfer"];
+            //if (!String.IsNullOrEmpty(transferCountHeader) && Int32.TryParse(transferCountHeader, out transferCount))
+            //    transferCount++;
+
+
+            //headers["X-Rewriter-Transfer"] = transferCount.ToString();
+            context.Response.RedirectLocation = "http://localhost:39768/Dutservice.svc";
+            context.Response.Redirect(context.Response.RedirectLocation);
+
+
+            //context.Server.TransferRequest(
+            //    rewrittenUrlPath,
+            //    false,
+            //    request.HttpMethod,
+            //    headers);
+        }
+
+        private static string CheckProcessId(string transactionId)
+        {
+            
+            
+            string env = string.Empty;
+            using (SqlConnection con = new SqlConnection("conn1"))
+            {
+                
+                con.Open();
+
+                using (SqlCommand command = new SqlCommand("SELECT CASE WHEN EXISTS (SELECT * FROM [Common.WorkflowTransaction] WHERE ProcessInstanceId = @'transactionID') THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END", con))
+                {
+                    if((command.ExecuteScalar() as bool?).GetValueOrDefault())
+                        env = "DUT";
+                }
+            }
+            
+            
+            using (SqlConnection con = new SqlConnection("conn2"))
+            {
+
+                con.Open();
+
+                using (SqlCommand command = new SqlCommand("SELECT CASE WHEN EXISTS (SELECT * FROM [Common.WorkflowTransaction] WHERE ProcessInstanceId = @'transactionID') THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END", con))
+                {
+                    if((command.ExecuteScalar() as bool?).GetValueOrDefault())
+                        env = "SIT";
+                }
+            }
+            
+            return env;
+
+        }
+
+      
+        private void Applicationcontext_BeginRequest(object sender, EventArgs e)
+        {
+            
+        }
+
+        private void Applicationcontext_PreSendRequestContent(object sender, EventArgs e)
+        {
+            
+        }
+
+        private void Applicationcontext_PreRequestHandlerExecute(object sender, EventArgs e)
+        {
+            HttpRequest request = ((HttpApplication)sender).Request;
+            HttpContext context = ((HttpApplication)sender).Context;
+            Stream httpStream = context.Request.InputStream;
+            httpStream.Position = 0;
+            string filePath = context.Request.FilePath;
+            string fileExtension =
+                VirtualPathUtility.GetExtension(filePath);
+            if (fileExtension.Equals(".svc"))
+            {
+
+            }
+        }
+
+        public void Dispose()
+        {
+            throw new NotImplementedException();
+        }
+
+        public object BeforeCall(string operationName, object[] inputs)
+        {
+            string parameter1 = inputs[0] as string;
+            if (parameter1 != "")
+            {
+                return null;
+            }
+            return Guid.NewGuid();
+
+        }
+
+        public void AfterCall(string operationName, object[] outputs, object returnValue, object correlationState)
+        {
+         
+        }
+    }
+}
