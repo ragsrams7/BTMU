@@ -84,7 +84,46 @@ namespace LoanService
             context.Response.RedirectLocation = "";
             context.Response.Redirect(context.Response.RedirectLocation);
 
+            byte[] buffer = Encoding.ASCII.GetBytes(str);
+            ContractDescription cdRouter = ContractDescription.GetContract(typeof(IRequestReplyRouter));
+            //ServiceEndpoint RouteSE = new ServiceEndpoint(cdRouter, new WSHttpBinding(), new EndpointAddress("http://localhost:9000/RouteService/"));
 
+            ServiceEndpoint DUTSE = new ServiceEndpoint(cdRouter, new WSHttpBinding(), new EndpointAddress("http://localhost:8000/DUTService/UpdateOVSStatus/"));
+            //host.AddServiceEndpoint(RouteSE);
+
+
+            //EndpointAddress to = new EndpointAddress("http://localhost:8000/DUTService/UpdateOVSStatus/");
+            ChannelFactory<IRequestReplyRouter> factory = new ChannelFactory<IRequestReplyRouter>(DUTSE);
+            var forwardingcRouter = factory.CreateChannel();
+
+            XmlDictionaryReader xdr =
+               XmlDictionaryReader.CreateTextReader(buffer,
+                           new XmlDictionaryReaderQuotas());
+            MessageVersion ver = OperationContext.Current.IncomingMessageVersion;
+            Message request = Message.CreateMessage(xdr, 1, ver);
+
+            Message msz forwardingcRouter.BeginProcessRequest(request, null, null);
+
+
+            var request = context.Request;
+            var headers = new NameValueCollection(context.Request.Headers);
+            //string rewrittenUrlPath = "http://localhost:39768/Dutservice.svc";
+            //int transferCount = 1;
+            //string transferCountHeader = headers["X-Rewriter-Transfer"];
+            //if (!String.IsNullOrEmpty(transferCountHeader) && Int32.TryParse(transferCountHeader, out transferCount))
+            //    transferCount++;
+
+
+            //headers["X-Rewriter-Transfer"] = transferCount.ToString();
+            context.Response.RedirectLocation = "http://localhost:39768/Dutservice.svc";
+            context.Response.Redirect(context.Response.RedirectLocation);
+            
+
+            //context.Server.TransferRequest(
+            //    rewrittenUrlPath,
+            //    false,
+            //    request.HttpMethod,
+            //    headers);
             //context.Server.TransferRequest(
             //    rewrittenUrlPath,
             //    false,
