@@ -131,21 +131,30 @@ namespace LoanService
             reqStream.Close();
 
 
-            WebResponse myWebResponse = newRequest.GetResponse();
-            
             HttpRequest original = context.Request;
-            HttpWebRequest newRequest = (HttpWebRequest)WebRequest.Create("newUrl");
-
-            newRequest.ContentType = original.ContentType;
+            HttpWebRequest newRequest = (HttpWebRequest)WebRequest.Create("http://localhost:39768/Dutservice.svc/");
+            CopyHeaders(newRequest, newRequest.Headers, original.Headers);
+            newRequest.ContentType =  original.ContentType;
+            //newRequest.Accept = "text/xml";
             newRequest.Method = original.HttpMethod;
             newRequest.UserAgent = original.UserAgent;
 
+
             byte[] originalStream = ReadToByteArray(original.InputStream);
+
+
 
             Stream reqStream = newRequest.GetRequestStream();
             reqStream.Write(originalStream, 0, originalStream.Length);
             reqStream.Close();
-            WebResponse myWebResponse = newRequest.GetResponse();
+
+
+            using (WebResponse myWebResponse = newRequest.GetResponse())
+            {
+                Stream stream = myWebResponse.GetResponseStream();
+                StreamReader sr = new StreamReader(stream);
+                string content = sr.ReadToEnd();
+            }
             
             //context.Server.TransferRequest(
             //    rewrittenUrlPath,
