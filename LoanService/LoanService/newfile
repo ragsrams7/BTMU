@@ -117,8 +117,36 @@ namespace LoanService
             //headers["X-Rewriter-Transfer"] = transferCount.ToString();
             context.Response.RedirectLocation = "http://localhost:39768/Dutservice.svc";
             context.Response.Redirect(context.Response.RedirectLocation);
-            
+            HttpRequest original = context.Request;
+            HttpWebRequest newRequest = (HttpWebRequest)WebRequest.Create("newUrl");
 
+            newRequest.ContentType = original.ContentType;
+            newRequest.Method = original.HttpMethod;
+            newRequest.UserAgent = original.UserAgent;
+
+            byte[] originalStream = ReadToByteArray(original.InputStream);
+
+            Stream reqStream = newRequest.GetRequestStream();
+            reqStream.Write(originalStream, 0, originalStream.Length);
+            reqStream.Close();
+
+
+            WebResponse myWebResponse = newRequest.GetResponse();
+            
+            HttpRequest original = context.Request;
+            HttpWebRequest newRequest = (HttpWebRequest)WebRequest.Create("newUrl");
+
+            newRequest.ContentType = original.ContentType;
+            newRequest.Method = original.HttpMethod;
+            newRequest.UserAgent = original.UserAgent;
+
+            byte[] originalStream = ReadToByteArray(original.InputStream);
+
+            Stream reqStream = newRequest.GetRequestStream();
+            reqStream.Write(originalStream, 0, originalStream.Length);
+            reqStream.Close();
+            WebResponse myWebResponse = newRequest.GetResponse();
+            
             //context.Server.TransferRequest(
             //    rewrittenUrlPath,
             //    false,
@@ -129,6 +157,20 @@ namespace LoanService
             //    false,
             //    request.HttpMethod,
             //    headers);
+        }
+        
+         public static byte[] ReadToByteArray(Stream input)
+        {
+            byte[] buffer = new byte[16 * 1024];
+            using (MemoryStream ms = new MemoryStream())
+            {
+                int read;
+                while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    ms.Write(buffer, 0, read);
+                }
+                return ms.ToArray();
+            }
         }
 
         private static string CheckProcessId(string transactionId)
