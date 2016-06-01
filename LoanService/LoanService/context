@@ -1,0 +1,303 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Web;
+using System.ServiceModel.Dispatcher;
+using System.Xml.Linq;
+using System.Data.SqlClient;
+using System.Collections.Specialized;
+using System.Net;
+using System.ServiceModel;
+using System.ServiceModel.Channels;
+using System.ServiceModel.Description;
+using System.ServiceModel.Dispatcher;
+using System.ServiceModel.Routing;
+using System.Text;
+using System.Xml;
+
+
+namespace LoanService
+{
+    public class Module : IHttpModule, IParameterInspector
+    {
+        public void Init(HttpApplication applicationcontext)
+        {
+            applicationcontext.PreSendRequestContent += new EventHandler(Applicationcontext_PreSendRequestContent);
+            applicationcontext.PreRequestHandlerExecute += new EventHandler(Applicationcontext_PreRequestHandlerExecute);
+            applicationcontext.BeginRequest += new EventHandler(Applicationcontext_BeginRequest);
+            applicationcontext.AuthenticateRequest += Applicationcontext_AuthenticateRequest;
+            
+
+        }
+
+        private void Applicationcontext_AuthenticateRequest(object sender, EventArgs e)
+        {
+            string environment;
+            HttpRequest request = ((HttpApplication)sender).Request;
+            HttpContext context = ((HttpApplication)sender).Context;
+
+            string respose = string.Empty;
+            System.IO.Stream req = context.Request.InputStream;
+            req.Seek(0, System.IO.SeekOrigin.Begin);
+            var str = new System.IO.StreamReader(req).ReadToEnd();
+            req.Position = 0;
+            XmlDocument soapenv = new XmlDocument();
+            if (!string.IsNullOrEmpty(str))
+            {
+                soapenv.LoadXml(@str);
+            }
+            
+            //XDocument z = XDocument.Load(@"C:\Users\N305733\Downloads\loan\LoanService\XMLFile1.xml");
+            //XDocument z = XDocument.Load(@"C:\Users\N305733\Downloads\loan\LoanService\XMLFile2.xml");
+
+            if (!string.IsNullOrEmpty(str) && context.Request.HttpMethod =="POST")
+            {
+                XDocument z = XDocument.Parse(str);
+                
+                var result = z.Root.DescendantsAndSelf().Attributes().
+                        Where(a => a.IsNamespaceDeclaration).
+                        GroupBy(a => a.Name.Namespace == XNamespace.None ? string.Empty : a.Name.LocalName,
+                                a => XNamespace.Get(a.Value)).
+                        ToDictionary(g => g.Key,
+                                     g => g.First());
+               
+                if (result.ContainsValue("http://us.mufg.jp/Applications/LoansApp/OVSSubmissionStatusDataRequest"))
+                {
+                    string ProcessId = z.Root.Descendants().Elements().Where(n => n.Name.LocalName == "TransactionId").FirstOrDefault().Value;
+                    if (string.IsNullOrEmpty(ProcessId)) return;
+                    environment = CheckProcessId(ProcessId);
+                    if (environment == "DUT")
+                    {
+                        respose = RewritetoDut(context, soapenv);
+                    }
+                }
+                else if (result.ContainsValue("http://us.mufg.jp/Applications/LoansApp/WorkflowSubmissionStatusDataRequest"))
+                {
+                    var firstOrDefault = z.Root.Descendants().Elements().FirstOrDefault(n => n.Name.LocalName == "ProcessInstanceId");
+                    var processId = firstOrDefault?.Value;
+                    if (string.IsNullOrEmpty(processId)) return;
+                    environment = CheckProcessId(processId);
+                    if (environment == "DUT")
+                        respose = RewritetoDut(context, soapenv);
+                }
+                context.Response.Write(respose);
+                //context.Response.End();
+                context.Response.Write(respose);
+                context.Response.Flush();
+                //context.Response.End();
+                context.ApplicationInstance.CompleteRequest();
+                request.Abort();
+
+            }
+           
+
+        }
+        public static byte[] ReadToByteArray(Stream input)
+        {
+            byte[] buffer = new byte[16 * 1024];
+            using (MemoryStream ms = new MemoryStream())
+            {
+                int read;
+                while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    ms.Write(buffer, 0, read);
+                }
+                return ms.ToArray();
+            }
+        }
+
+        private static string RewritetoDut(HttpContext context, XmlDocument soapenv)
+        {
+
+
+            HttpRequest original = context.Request;
+            HttpWebRequest newRequest = (HttpWebRequest)WebRequest.Create("http://localhost:39768/Dutservice.svc");
+            CopyHeaders(newRequest, newRequest.Headers, original.Headers);
+            string responseresult = string.Empty;
+            
+            //newRequest.ContentType = original.ContentType;
+            newRequest.Method = original.HttpMethod;
+            newRequest.UserAgent = original.UserAgent;
+            newRequest.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+
+            byte[] originalStream = ReadToByteArray(original.InputStream);
+
+
+
+            Stream reqStream = newRequest.GetRequestStream();
+            soapenv.Save(reqStream);
+            //reqStream.Write(originalStream, 0, originalStream.Length);
+            reqStream.Close();
+
+
+            using (WebResponse myWebResponse = newRequest.GetResponse())
+            {
+                
+                Stream stream = myWebResponse.GetResponseStream();
+                StreamReader sr = new StreamReader(stream);
+                responseresult = sr.ReadToEnd();
+            }
+            return responseresult;
+            //XmlDocument xmlResult = new XmlDocument();
+            //xmlResult.LoadXml(responseresult);
+
+            //ServiceHost host = new ServiceHost(typeof(RoutingService));
+            //foreach (var sb in host.Description.Behaviors)
+            //{
+            //    ServiceDebugBehavior sdb = sb as ServiceDebugBehavior;
+            //    if (sdb != null)
+            //    {
+            //        sdb.IncludeExceptionDetailInFaults = true;
+            //    }
+            //}
+            //byte[] buffer = Encoding.ASCII.GetBytes(str);
+            //ContractDescription cdRouter = ContractDescription.GetContract(typeof(IRequestReplyRouter));
+            //ServiceEndpoint RouteSE = new ServiceEndpoint(cdRouter, new WSHttpBinding(), new EndpointAddress("http://localhost:9000/RouteService/"));
+
+            //ServiceEndpoint DUTSE = new ServiceEndpoint(cdRouter, new WSHttpBinding(), new EndpointAddress("http://localhost:8000/DUTService/UpdateOVSStatus/"));
+            //host.AddServiceEndpoint(RouteSE);
+
+
+            //EndpointAddress to = new EndpointAddress("http://localhost:8000/DUTService/UpdateOVSStatus/");
+            //ChannelFactory<IRequestReplyRouter> factory = new ChannelFactory<IRequestReplyRouter>(DUTSE);
+            //var forwardingcRouter = factory.CreateChannel();
+
+            //XmlDictionaryReader xdr =
+            //   XmlDictionaryReader.CreateTextReader(buffer,
+            //               new XmlDictionaryReaderQuotas());
+            //MessageVersion ver = OperationContext.Current.IncomingMessageVersion;
+            //Message request = Message.CreateMessage(xdr, 1, ver);
+
+            //Message msz = forwardingcRouter.BeginProcessRequest(request, null, null);
+
+
+            //var request = context.Request;
+            //var headers = new NameValueCollection(context.Request.Headers);
+            //string rewrittenUrlPath = "http://localhost:39768/Dutservice.svc";
+            //int transferCount = 1;
+            //string transferCountHeader = headers["X-Rewriter-Transfer"];
+            //if (!String.IsNullOrEmpty(transferCountHeader) && Int32.TryParse(transferCountHeader, out transferCount))
+            //    transferCount++;
+
+
+            //headers["X-Rewriter-Transfer"] = transferCount.ToString();
+            //context.Response.RedirectLocation = "http://localhost:39768/Dutservice.svc";
+            //context.Response.Redirect(context.Response.RedirectLocation);
+
+
+            //context.Server.TransferRequest(
+            //    rewrittenUrlPath,
+            //    false,
+            //    request.HttpMethod,
+            //    headers);
+        }
+        static void CopyHeaders(object rootTo, NameValueCollection to, NameValueCollection from)
+        {
+            foreach (string header in from.AllKeys)
+            {
+                try
+                {
+                    to.Add(header, from[header]);
+                }
+                catch
+                {
+                    try
+                    {
+                        rootTo.GetType().GetProperty(header.Replace("-", "")).SetValue(rootTo, from[header]);
+                    }
+                    catch { }
+                }
+            }
+        }
+        private static string CheckProcessId(string transactionId)
+        {
+            string env = string.Empty;
+            ////check in SIT DB; if not found then route to DUT 
+            //using (var loansUow = new LoansUOW())
+            //{
+            //    var workflowTransactionRepo = loansUow.GenericRepositoryFor<WorkflowTransaction>();
+            //    var firstOrDefault =
+            //        workflowTransactionRepo.Find(x => x.ProcessInstanceId == transactionId)
+            //            .FirstOrDefault();
+            //    if(firstOrDefault == null)
+            //        env = "DUT";
+            //}
+
+            
+            using (SqlConnection con = new SqlConnection("conn1"))
+            {
+                
+                con.Open();
+
+                using (SqlCommand command = new SqlCommand("SELECT CASE WHEN EXISTS (SELECT * FROM [Common.WorkflowTransaction] WHERE ProcessInstanceId = @'transactionID') THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END", con))
+                {
+                    if((command.ExecuteScalar() as bool?).GetValueOrDefault())
+                        env = "DUT";
+                }
+            }
+            
+            
+            using (SqlConnection con = new SqlConnection("conn2"))
+            {
+
+                con.Open();
+
+                using (SqlCommand command = new SqlCommand("SELECT CASE WHEN EXISTS (SELECT * FROM [Common.WorkflowTransaction] WHERE ProcessInstanceId = @'transactionID') THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END", con))
+                {
+                    if((command.ExecuteScalar() as bool?).GetValueOrDefault())
+                        env = "SIT";
+                }
+            }
+            
+            return env;
+
+        }
+
+      
+        private void Applicationcontext_BeginRequest(object sender, EventArgs e)
+        {
+            
+        }
+
+        private void Applicationcontext_PreSendRequestContent(object sender, EventArgs e)
+        {
+            
+        }
+
+        private void Applicationcontext_PreRequestHandlerExecute(object sender, EventArgs e)
+        {
+            //HttpRequest request = ((HttpApplication)sender).Request;
+            //HttpContext context = ((HttpApplication)sender).Context;
+            //Stream httpStream = context.Request.InputStream;
+            //httpStream.Position = 0;
+            //string filePath = context.Request.FilePath;
+            //string fileExtension =
+            //    VirtualPathUtility.GetExtension(filePath);
+            //if (fileExtension.Equals(".svc"))
+            //{
+
+            //}
+        }
+
+        public void Dispose()
+        {
+            throw new NotImplementedException();
+        }
+
+        public object BeforeCall(string operationName, object[] inputs)
+        {
+            string parameter1 = inputs[0] as string;
+            if (parameter1 != "")
+            {
+                return null;
+            }
+            return Guid.NewGuid();
+
+        }
+
+        public void AfterCall(string operationName, object[] outputs, object returnValue, object correlationState)
+        {
+         
+        }
+    }
+}
