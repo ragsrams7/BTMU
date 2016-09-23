@@ -1,0 +1,378 @@
+public IEnumerable<AuditReportViewModel> GetAuditReport(ReportSearchCriteriaViewModel rptSearchCriteria, ReportTypeCode rptTypeCode = ReportTypeCode.Audit)
+        {
+            var reportViewModel = new List<AuditReportViewModel>();
+            using (var loansUOW = UnitOfWork ?? new LoansUOW())
+            {
+                var fundingRequestRepo = loansUOW.GenericRepositoryFor<FundingRequest>().GetAll();
+                var breakfundingRepo = loansUOW.GenericRepositoryFor<BreakFunding>().GetAll();
+                var rollOverRepo = loansUOW.GenericRepositoryFor<RollOver>().GetAll();
+                var facilitySetupRepo = loansUOW.GenericRepositoryFor<FacilitySetup>().GetAll();
+                var workflowTransationRepo = loansUOW.GenericRepositoryFor<WorkflowTransaction>().GetAll();
+                var workflowTaskRepo = loansUOW.GenericRepositoryFor<WorkflowTask>().GetAll();
+                var employeeRepo = loansUOW.GenericRepositoryFor<Employee>().GetAll();
+                var customerRepo = loansUOW.GenericRepositoryFor<Customer>().GetAll();
+                var incomingRequestRepo = loansUOW.GenericRepositoryFor<IncomingRequest>().GetAll();
+                var incomingRequestActivityRepo = loansUOW.GenericRepositoryFor<IncomingRequestActivity>().GetAll();
+                var transactionNumberRepo = loansUOW.GenericRepositoryFor<TransactionNumber>().GetAll();
+                var breakFundingInvoiceRepo = loansUOW.GenericRepositoryFor<RegenerationInvoiceDetails>().GetAll();
+
+                var regenInv = breakFundingInvoiceRepo.Select(b => new { BreakFunding = b.BreakFunding, RegenerationInvoiceDetails = b, WorkflowTransactionId = b.WorkflowTransactionId });
+                var bf = breakfundingRepo.Select(b => new { BreakFunding = b, RegenerationInvoiceDetails = (RegenerationInvoiceDetails)null, WorkflowTransactionId = b.WorkflowTransactionId });
+                var bfWithRegen = bf.Union(regenInv);
+
+                var users = InvokeDomainService<IUserService, List<int>>((appService, messages) => appService.GetMyTeamUsers());
+                if (users != null && users.Any())
+                {
+                    #region breakFunding
+
+                    var bquery = (
+                        from bfunding in bfWithRegen
+                        join customer in customerRepo on bfunding.BreakFunding.CustomerId equals customer.CustomerId
+                        join wTransaction in workflowTransationRepo on bfunding.WorkflowTransactionId equals
+                            wTransaction.WorkflowTransactionId
+                        join transactionNumber in transactionNumberRepo on bfunding.BreakFunding.LoanTransactionNumberId equals
+                            transactionNumber.TransactionNumberId into tn
+                        from tNumber in tn.Where(tNumber => tNumber.WorkflowTypeCode == WorkFlowTypes.Loan).DefaultIfEmpty()
+
+                        join i in incomingRequestActivityRepo on bfunding.BreakFunding.WorkflowTransactionId equals i.WorkflowTransactionId
+                               into iRequestAct
+                        from ira in iRequestAct.DefaultIfEmpty()
+
+                        join ir in incomingRequestRepo on ira.IncomingRequestId equals ir.IncomingRequestId
+                               into iRequest
+                        from ir in iRequest.DefaultIfEmpty()
+
+                        let wt = (from e1 in employeeRepo
+                                  where wTransaction.CreatedBy == e1.EmployeeUID
+                                  orderby e1.EmployeeId descending
+                                  select new
+                                  {
+                                      e1.FirstName,
+                                      e1.LastName,
+                                      e1.EmployeeUID
+                                  }).FirstOrDefault()
+
+                        let uwtc =
+                            (from uwttc in workflowTaskRepo
+                             where uwttc.WorkflowTransactionId == wTransaction.WorkflowTransactionId
+                             orderby uwttc.WorkflowTaskId descending
+                             select new { uwttc.WorkflowTransactionId, uwttc.UpdatedDate, uwttc.CreatedDate })
+                                .FirstOrDefault()
+                        join wtask in workflowTaskRepo
+                        on bfunding.WorkflowTransactionId equals wtask.WorkflowTransactionId
+                        where users.Contains(wtask.TaskOwner)
+                        select new AuditReportViewModel()
+                        {
+                            ReferenceNumber = ir != null ? ir.FaxControlNumber : SqlFunctions.StringConvert((double)bfunding.WorkflowTransactionId).Trim(),
+                            CDLID = customer.CounterpartyId,
+                            WorkflowTransactionId = bfunding.WorkflowTransactionId,
+                            CIFID = customer.CIFNumber,
+                            CustomerName = customer.CustomerName,
+                            TransactionTypeCode = TransactionTypes.BreakFunding.ToString(),
+                            LoanNumber = tNumber.MainNumber + "-" + tNumber.SubNumber,
+                            FacilityNumber = tNumber.MainNumber + "-" + tNumber.SubNumber,
+                            CurrencyCode = bfunding.BreakFunding.PaydownCurrencyCode,
+                            Amount = bfunding.BreakFunding.PaydownAmount,
+                            InitiationDate = bfunding.BreakFunding.CreatedDate,
+                            DateTimeReceived = bfunding.BreakFunding.CreatedDate,
+                            CompletedDate = uwtc.UpdatedDate ?? uwtc.CreatedDate,
+                            ValueDate = bfunding.BreakFunding.EffectiveDate,
+                            BookingBranchCode = wTransaction.BranchCode,
+                            ResponsibleCostCenterCode = customer.CostCenterCode,
+                            StatusCode = wTransaction.WorkflowStatusCode,
+                            TransactionNumber = tNumber.MainNumber + "-" + tNumber.SubNumber,
+                            RateTypeCode = null,
+                            FacilityDescription = null,
+                            MakerId = wt.EmployeeUID,
+                            BookingCostCenterCode = bfunding.BreakFunding.BookingCostCenterCode
+                        }).Distinct();
+
+                    var filter = GetFilters(rptSearchCriteria, rptTypeCode);
+
+                    if (filter != null && filter.Count > 0)
+                    {
+                        Expression<Func<AuditReportViewModel, bool>> deleg;
+                        if (rptTypeCode == ReportTypeCode.TaskCleanup && string.IsNullOrEmpty(rptSearchCriteria.Status))
+                        {
+                            deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter, false);
+                        }
+                        else
+                        {
+                            deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter);
+                        }
+                        bquery = bquery.Where(deleg);
+                        //var deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter);
+                        //bquery = bquery.Where(deleg);
+                    }
+
+                    #endregion
+
+                    #region FacilitySetup
+
+                    var department = UserContext.Current.EmployeeModel.Department;
+
+                    var fsquery = (
+                        from facility in facilitySetupRepo
+                        join tmpCustomer in customerRepo on facility.CustomerId equals tmpCustomer.CustomerId
+                            into leftCustomer
+                        from customer in leftCustomer.DefaultIfEmpty()
+                        join wTransaction in workflowTransationRepo on facility.WorkflowTransactionId equals
+                            wTransaction.WorkflowTransactionId
+                        join transactionNumber in transactionNumberRepo on facility.WorkflowTransactionId equals
+                            transactionNumber.WorkflowTransactionId into tn
+                        from tNumber in tn.DefaultIfEmpty()
+
+                        let wt = (from e1 in employeeRepo
+                                  where wTransaction.CreatedBy == e1.EmployeeUID
+                                  orderby e1.EmployeeId descending
+                                  select new
+                                  {
+                                      e1.FirstName,
+                                      e1.LastName,
+                                      e1.EmployeeUID
+                                  }).FirstOrDefault()
+                        let uwtc =
+                            (from uwttc in workflowTaskRepo
+                             where uwttc.WorkflowTransactionId == wTransaction.WorkflowTransactionId
+                             orderby uwttc.WorkflowTaskId descending
+                             select new { uwttc.WorkflowTransactionId, uwttc.UpdatedDate, uwttc.CreatedDate })
+                                .FirstOrDefault()
+                        join wtask in workflowTaskRepo
+                        on facility.WorkflowTransactionId equals wtask.WorkflowTransactionId
+                        where (users.Contains(wtask.TaskOwner) && department != DivisionCode.BO.ToString())
+                            || (department == DivisionCode.BO.ToString() && BOFacilityStatuses.Contains(wTransaction.WorkflowStatusCode.ToUpper()) && users.Contains(wtask.TaskOwner))
+                        select new AuditReportViewModel()
+                        {
+                            ReferenceNumber = SqlFunctions.StringConvert((double)facility.WorkflowTransactionId),
+                            CDLID = customer.CounterpartyId,
+                            WorkflowTransactionId = facility.WorkflowTransactionId,
+                            CIFID = customer.CIFNumber,
+                            CustomerName = customer.CustomerName,
+                            TransactionTypeCode = wTransaction.WorkFlowTypeCode,
+                            LoanNumber = tNumber.MainNumber + "-" + tNumber.SubNumber,
+                            FacilityNumber = tNumber.MainNumber + "-" + tNumber.SubNumber,
+                            CurrencyCode = facility.CreditAmountCurrencyCode,
+                            Amount = facility.CreditAmount,
+                            InitiationDate = facility.CreatedDate,
+                            DateTimeReceived = facility.CreatedDate,
+                            CompletedDate = uwtc.UpdatedDate ?? uwtc.CreatedDate,
+                            ValueDate = facility.DrawableFromDate,
+                            BookingBranchCode = wTransaction.BranchCode,
+                            ResponsibleCostCenterCode = customer.CostCenterCode,
+                            StatusCode = wTransaction.WorkflowStatusCode,
+                            TransactionNumber = tNumber.MainNumber + "-" + tNumber.SubNumber,
+                            RateTypeCode = null,
+                            FacilityDescription = facility.OurRef,
+                            MakerId = wt.EmployeeUID,
+                            BookingCostCenterCode = facility.BookingCostCenterCode
+                        }).Distinct();
+                    
+                    filter = GetFilters(rptSearchCriteria, rptTypeCode);
+
+                    if (filter != null && filter.Count > 0)
+                    {
+                        Expression<Func<AuditReportViewModel, bool>> deleg;
+                        if (rptTypeCode == ReportTypeCode.TaskCleanup && string.IsNullOrEmpty(rptSearchCriteria.Status))
+                        {
+                            deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter, false);
+                        }
+                        else
+                        {
+                            deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter);
+                        }
+                        fsquery = fsquery.Where(deleg);
+                        //var deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter);
+                        //fsquery = fsquery.Where(deleg);
+                    }
+
+                    #endregion
+
+                    #region fundingRequestRepo
+
+                    var fquery = (
+                        from fRequest in fundingRequestRepo
+                        join tmpTransactionNumber in transactionNumberRepo on fRequest.WorkflowTransactionId
+                           equals tmpTransactionNumber.WorkflowTransactionId into leftTransactionNumber
+                        from transactionNumber in leftTransactionNumber.Where(tNumber => tNumber.WorkflowTypeCode == WorkFlowTypes.Loan).DefaultIfEmpty()
+                        join tmpCustomer in customerRepo on fRequest.CustomerId equals tmpCustomer.CustomerId
+                            into leftCustomer
+                        from customer in leftCustomer.DefaultIfEmpty()
+                        join wTransaction in workflowTransationRepo on fRequest.WorkflowTransactionId equals
+                            wTransaction.WorkflowTransactionId
+                        join employee in employeeRepo on fRequest.DealerId equals employee.EmployeeId into temp
+                        from emp in temp.DefaultIfEmpty()
+
+                        join i in incomingRequestActivityRepo on fRequest.WorkflowTransactionId equals i.WorkflowTransactionId
+                                                      into iRequestAct
+                        from ira in iRequestAct.DefaultIfEmpty()
+
+                        join ir in incomingRequestRepo on ira.IncomingRequestId equals ir.IncomingRequestId
+                               into iRequest
+                        from ir in iRequest.DefaultIfEmpty()
+
+                        let wt = (from e1 in employeeRepo
+                                  where wTransaction.CreatedBy == e1.EmployeeUID
+                                  orderby e1.EmployeeId descending
+                                  select new
+                                  {
+                                      e1.FirstName,
+                                      e1.LastName,
+                                      e1.EmployeeUID
+                                  }).FirstOrDefault()
+                        let uwtc =
+                            (from uwttc in workflowTaskRepo
+                             where uwttc.WorkflowTransactionId == wTransaction.WorkflowTransactionId
+                             orderby uwttc.WorkflowTaskId descending
+                             select new { uwttc.WorkflowTransactionId, uwttc.UpdatedDate, uwttc.CreatedDate })
+                                .FirstOrDefault()
+                        join wtask in workflowTaskRepo
+                        on fRequest.WorkflowTransactionId equals wtask.WorkflowTransactionId
+                        where users.Contains(wtask.TaskOwner) && fRequest.IsRollOver != true
+                        select new AuditReportViewModel()
+                        {
+                            ReferenceNumber =
+                                ir != null
+                                    ? ir.FaxControlNumber
+                                    : SqlFunctions.StringConvert((double)fRequest.WorkflowTransactionId).Trim(),
+                            CDLID = customer.CounterpartyId,
+                            WorkflowTransactionId = fRequest.WorkflowTransactionId,
+                            CIFID = customer.CIFNumber,
+                            CustomerName = customer.CustomerName,
+                            TransactionTypeCode = wTransaction.WorkFlowTypeCode,
+                            LoanNumber = transactionNumber.MainNumber + "-" + transactionNumber.SubNumber,
+                            FacilityNumber = transactionNumber.MainNumber + "-" + transactionNumber.SubNumber,
+                            CurrencyCode = fRequest.TransactionCurrencyCode,
+                            Amount = fRequest.NewAmount ?? fRequest.TransactionAmount,
+                            InitiationDate = fRequest.CreatedDate,
+                            DateTimeReceived = fRequest.CreatedDate,
+                            CompletedDate = uwtc.UpdatedDate ?? uwtc.CreatedDate,
+                            ValueDate = fRequest.ValueDate,
+                            BookingBranchCode = wTransaction.BranchCode,
+                            ResponsibleCostCenterCode = customer.CostCenterCode,
+                            StatusCode = wTransaction.WorkflowStatusCode,
+                            TransactionNumber = (wTransaction == null || wTransaction.WorkFlowTypeCode == TransactionTypes.FundingWorksheet.ToString()) ? string.Empty : transactionNumber.MainNumber + "-" + transactionNumber.SubNumber,
+                            RateTypeCode = fRequest.ISRateTypeCode,
+                            FacilityDescription = null,
+                            MakerId = wt.EmployeeUID,
+                            BookingCostCenterCode = fRequest.BookingCostCenterCode
+                        }).Distinct();
+
+                    filter = GetFilters(rptSearchCriteria, rptTypeCode);
+
+                    if (filter != null && filter.Count > 0)
+                    {
+                        Expression<Func<AuditReportViewModel, bool>> deleg;
+                        if (rptTypeCode == ReportTypeCode.TaskCleanup && string.IsNullOrEmpty(rptSearchCriteria.Status))
+                        {
+                            deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter, false);
+                        }
+                        else
+                        {
+                            deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter);
+                        }
+                        fquery = fquery.Where(deleg);
+                        //var deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter);
+                        //fquery = fquery.Where(deleg);
+                    }
+
+                    #endregion
+
+                    #region Rollover
+
+                    var rquery = (
+                        from rollOver in rollOverRepo
+                        join fRequest in fundingRequestRepo on rollOver.WorkflowTransactionId equals
+                            fRequest.WorkflowTransactionId
+                        join tmpCustomer in customerRepo on fRequest.CustomerId equals tmpCustomer.CustomerId
+                            into leftCustomer
+                        from customer in leftCustomer.DefaultIfEmpty()
+                        join wTransaction in workflowTransationRepo on rollOver.WorkflowTransactionId equals
+                            wTransaction.WorkflowTransactionId
+
+                        join tmpTransactionNumber in transactionNumberRepo on rollOver.LoanTransactionNumberId
+                            equals tmpTransactionNumber.TransactionNumberId into leftTransactionNumber
+                        from transactionNumber in leftTransactionNumber.Where(tNumber => tNumber.WorkflowTypeCode == WorkFlowTypes.Loan).DefaultIfEmpty()
+
+                        join i in incomingRequestActivityRepo on fRequest.WorkflowTransactionId equals i.WorkflowTransactionId
+                                                       into iRequestAct
+                        from ira in iRequestAct.DefaultIfEmpty()
+
+                        join ir in incomingRequestRepo on ira.IncomingRequestId equals ir.IncomingRequestId
+                               into iRequest
+                        from ir in iRequest.DefaultIfEmpty()
+
+                        let wt = (from e1 in employeeRepo
+                                  where wTransaction.CreatedBy == e1.EmployeeUID
+                                  orderby e1.EmployeeId descending
+                                  select new
+                                  {
+                                      e1.FirstName,
+                                      e1.LastName,
+                                      e1.EmployeeUID
+                                  }).FirstOrDefault()
+
+                        let uwtc =
+                            (from uwttc in workflowTaskRepo
+                             where uwttc.WorkflowTransactionId == wTransaction.WorkflowTransactionId
+                             orderby uwttc.WorkflowTaskId descending
+                             select new { uwttc.WorkflowTransactionId, uwttc.UpdatedDate, uwttc.CreatedDate })
+                                .FirstOrDefault()
+                        join wtask in workflowTaskRepo
+                        on rollOver.WorkflowTransactionId equals wtask.WorkflowTransactionId
+                        where users.Contains(wtask.TaskOwner)
+                        select new AuditReportViewModel()
+                        {
+                            ReferenceNumber = ir != null ? ir.FaxControlNumber : SqlFunctions.StringConvert((double)fRequest.WorkflowTransactionId).Trim(),
+                            CDLID = customer.CounterpartyId,
+                            WorkflowTransactionId = rollOver.WorkflowTransactionId,
+                            CIFID = customer.CIFNumber,
+                            CustomerName = customer.CustomerName,
+                            TransactionTypeCode = wTransaction.WorkFlowTypeCode,
+                            LoanNumber = transactionNumber.MainNumber + "-" + transactionNumber.SubNumber,
+                            FacilityNumber = transactionNumber.MainNumber + "-" + transactionNumber.SubNumber,
+                            CurrencyCode = fRequest.TransactionCurrencyCode,
+                            Amount = fRequest.NewAmount ?? fRequest.TransactionAmount,
+                            InitiationDate = rollOver.CreatedDate,
+                            DateTimeReceived = rollOver.CreatedDate,
+                            CompletedDate = uwtc.UpdatedDate ?? uwtc.CreatedDate,
+                            ValueDate = fRequest.ValueDate,
+                            BookingBranchCode = wTransaction.BranchCode,
+                            ResponsibleCostCenterCode = customer.CostCenterCode,
+                            StatusCode = wTransaction.WorkflowStatusCode,
+                            TransactionNumber = transactionNumber.MainNumber + "-" + transactionNumber.SubNumber,
+                            RateTypeCode = fRequest.ISRateTypeCode,
+                            FacilityDescription = null,
+                            MakerId = wt.EmployeeUID,
+                            BookingCostCenterCode = fRequest.BookingCostCenterCode
+                        }).Distinct();
+
+                    filter = GetFilters(rptSearchCriteria, rptTypeCode);
+
+                    if (filter != null && filter.Count > 0)
+                    {
+                        Expression<Func<AuditReportViewModel, bool>> deleg;
+                        if (rptTypeCode == ReportTypeCode.TaskCleanup && string.IsNullOrEmpty(rptSearchCriteria.Status))
+                        {
+                            deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter, false);
+                        }
+                        else
+                        {
+                            deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter);
+                        }
+                        rquery = rquery.Where(deleg);
+                        //var deleg = ExpressionBuilder.GetExpression<AuditReportViewModel>(filter);
+                        //rquery = rquery.Where(deleg);
+                    }
+
+                    #endregion
+
+
+                    reportViewModel = bquery.Concat(fsquery).Concat(fquery).Concat(rquery).ToList();
+
+                    //foreach (var item in list)
+                    //      Btmu.LoansApp.DomainService.ViewModelCustomActions.RunCustomActions(item);
+                    ViewModelCustomActions.RunCustomActions(reportViewModel);
+                }
+            }
+            return reportViewModel;
+        }
