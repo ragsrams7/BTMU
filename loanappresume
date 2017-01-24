@@ -1,0 +1,104 @@
+LoanApp (Loan Application), is implemented to be the front system of OVS, serving as the local system for US business users which can cover local business requirement associating with OVS. Through LoansApp, the user is able to carry out all complicated US-business scenarios which can't be accomodated by the global overseas system (OVS) alone.
+
+Where it all began  
+
+The Core Banking System currently used by BTMU-US was rolled out in a series of Incremental implementations over the past 20+ years. As part of Project Hudson, an assessment of the core platform's ability to support future business needs was completed in 2009.  Managements determined that the replacement of the core platform was mandatory to support the business growth objectives.After detail analysis, the solution known as OVS Hybrid+ (OVS +T360) was decided.
+
+OVS is the global overseas system of BTMU that has already gone live in European and Asian branches.This solution utilizes the OVS platform with significant enhancements for the US market.In order to satisfy business needs for the loans area, OVS Loans is being implemented. This includes integration of OVS Loans system with local systems ( US ) which are LoanApp, IRIS etc.
+
+At US business, User are using ACBS currently. Some business scenario can't be covered at OVS system due to complicated business in US.In order to accommodate with US Loan business, Loan APP is implemented as front system of OVS. Loan APP is the local System in US which can cover local business requirement associating with OVS.
+
+Our footprint in the CBR world
+
+We have a pictorial description of how  LoanApp plays a key component in the US business.
+Scope of the application
+
+What Loan App does on a high level:
+1. Credit Registration/Facility – setting up the line of credit for the customers.
+2. Loan Booking– booking the loan for a given facility and sublimit.
+3. Rollover (Rate Reset) – rate reset transaction for the variable interest rate loans.
+4. Break-funding – pre-paying or break funding an existing loan.
+5. Funding Request Processing – processing of funding a loan.            
+6. GMDA Processes – GMDA funding processes for fed fund, LIBOR and break funding.
+7. Report Approval and Commenting – application to automate the report approval circulation and notification.
+8. Other transaction processing/tracking (FTFS) – processing and tracking of other activities done by LOD.
+9. Reconciliation/Intra-day reports – intra-day reports for activity monitoring and transaction reconciliation
+How business users use LoanApp under different roles: 
+
+There mainly 4 business groups and 1 admin group to which any given user can belong to. They are:
+
+• Front Office
+
+
+• Middle Office
+
+
+• Back Office
+
+
+• GMDA
+
+
+• Admin
+Technology
+
+The whole application is developed in Microsoft platform using the following frameworks and software:
+•.Net Framework 4.6
+•.NET WCF, Java-Script
+•SQL Server 2008/2012
+•Windows 2008/2012
+•Enterprise Library 5.05 application block
+•Entity Framework 6.0
+•Team Foundation Service 2012
+•Visual Studio 2015 with C#
+
+Credit Registration/Facility  
+ 
+Site Contents
+
+​Facility or a Credit Registration, by definition, is a formal financial assistance program offered by a lending institution to help a company that requires operating capital. Facility can be committed, meaning that they specify a precise amount of funds that will be provided or uncommitted, meaning that the lender has not agreed to provide a specified amount of funding. 
+
+A facility can be initiated at Front Office or Middle Office. Also, a facility can be initiated using the incoming messages received from IRIS application. 
+
+The below picture shows a high level facility flow. 
+Loan, by definition, is the act of giving money, property or other material goods to another party in exchange for future repayment of the principal amount along with interest or other finance charges. LoanApp is used to set up Commercial Loan which is a debt-based funding arrangement that a business can set up with our bank. The loans are associated with flexible rates of interest that are tied to the bank's Prime rates or to the London Interbank Offered Rate (LIBOR) - BBA Libor/BTMU Libor/ Tibor(Tokyo Libor).  
+
+A loan can be initiated at all three departments- Front Office, Middle Office and Back Office. The respective initiators can initiate a loan usder a customer or under a facility depending on the information at hand. A loan can also be initiated via the incoming messages that are received from the IRIS system. 
+
+A Loan setup screen on LoanApp has 7 different tabs - Funding Request, Main, Settlement, Advance, Fee, Comments and Cashflow.
+​Rollover is a process whereby a financial instrument is reinvested at maturity. In LoanApp Rollover provides 2 types of transactions as below.
+1.Rate Reset
+2.Renewal(Out of scope) 
+
+Rate Reset - Loans can be provided either on fixed rate or variable rate of interest. In case of fixed rate, rate remains flat and is valid till the maturity of loan. in case of variable rate, rate can fluctuate based on market conditions and this provides an opportunity to customer to request rates reset after certain intervals or customer can agree on reset after regular interval during loan processing.
+
+Rate Reset can be Intitated by FO 
+
+A Rate Reset can be initiated at two departments- Front Office and Back Office. The respective initiators can initiate a rate reset uder a customer or under a loan depending on the information at hand. A rate reset can also be initiated via the incoming messages that are received from the IRIS system. 
+
+A rate reset setup screen on LoanApp has 3 different tabs - Funding Request, Cashflow, Settlement
+​Break Funding (BF) is request raised by customer who intends to pay full/partial loan given to him before loan maturity / value date. BF normally carries a cost to it and is levied on customer by bank as either one time cost or by increasing rates for remaining loan.
+
+Essentially a Loan request consist of 2 events 
+
+1) Funding Request
+
+2) Transfer fund to customer (Borrowing)
+
+Funding request can be done seperately and upfront by BO for a loan for which loan transaction can be later on booked in OVS. When a funding request is sent to GMDA, GMDA provides the rate and also provides the fund to BO for processing.
+GMDA(Global Markets Division of America) Department is responsible for providing different types of rate. there are two different roles available in this department
+1. GMDA Maker 
+2.GMDA Approver 
+
+Summary
+
+Report Approval is part of the Loan App project but is hosted as a separate application by itself. To briefly state the characteristics of this system, the Report Approval process is used to create a Report Approval for a report request. This process will orchestrate the steps, integration and integration between users (Maker, Sequential Approvers, Parallel Approvers and Administrator), report circulations and systems (ReportApprovalUI and BPM) needed to facilitate the creation of a Report Approval. 
+
+With appropriate e-forms submitted and approved, the application can be accessed at (SIT environment):  https://reportapproval-sit.btmna.com/Web
+
+Report Template Initiation
+
+Report Template process can be started by the receiving of the 'ReportTemplateRequest' document from Report Template UI. The template maker will initiate/create report template. This template will go for approval to the Template Approver. The approver also has ability to reject the template submitted. The picture below depicts the template creation/rejection scenario.
+
+Also, once submitted, the template cannot be updated by Maker. Hence Template Maker can terminate the Report Template process stating that Checker doesn't approve and Maker can't make changes to the template to make it possible for Checker to approve it.
+
