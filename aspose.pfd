@@ -3,3 +3,18 @@ Page page = document.Pages.Add();
 page.Paragraphs.Add(new Aspose.Pdf.Text.TextFragment("Hello World!"));
 // Save updated PDF
 document.Save(dataDir + "HelloWorld_out.pdf");
+
+Aspose.Pdf.Document doc = new Aspose.Pdf.Document();
+doc.Pages.Add().Paragraphs.Add(new Aspose.Pdf.Text.TextFragment("Hello World"));
+MemoryStream ms = new MemoryStream();
+doc.Save(ms);
+Response.Clear();
+Response.ClearHeaders();
+Response.ClearContent();
+Response.Charset = "UTF-8";
+Response.AddHeader("content-length", ms.Length.ToString());
+Response.AddHeader("content-disposition", String.Format("attachment;filename=TestDocument.pdf", "FileName"));
+Response.ContentType = "application/pdf";
+Response.BinaryWrite(ms.ToArray());
+Response.Flush();
+Response.End();
